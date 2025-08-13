@@ -7,24 +7,26 @@ using json = nlohmann::json;
 
 class Config
 {
-  public:
-    Config()
-    {
-        reload();
-    }
+public:
+  Config()
+  {
+    reload();
+  }
 
-    void reload()
-    {
-        std::ifstream fin(project_path + "settings.json");
-        fin >> config;
-        fin.close();
-    }
+  // загружает настройки из файла settings.json заново
+  void reload()
+  {
+    std::ifstream fin(project_path + "settings.json");
+    fin >> config;
+    fin.close();
+  }
 
-    auto operator()(const string &setting_dir, const string &setting_name) const
-    {
-        return config[setting_dir][setting_name];
-    }
+  // оператор () позволяет красиво получать значения настроек по пути, к примеру: config("Bot", "IsWhiteBot") вместо config["Bot"]["IsWhiteBot"]
+  auto operator()(const string &setting_dir, const string &setting_name) const
+  {
+    return config[setting_dir][setting_name];
+  }
 
-  private:
-    json config;
+private:
+  json config;
 };
