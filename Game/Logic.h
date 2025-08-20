@@ -19,8 +19,68 @@ public:
         optimization = (*config)("Bot", "Optimization");
     }
 
-    // объявление функции поиска лучших ходов
-    vector<move_pos> find_best_turns(const bool color);
+    // поиск лучших ходов
+    vector<move_pos> find_best_turns(const bool color)
+    {
+        // инициализация переменных
+        next_move.clear();
+        next_best_state.clear();
+
+        // поиск всех возможных ходов для текущ. цвета
+        find_turns(color);
+
+        // если нет ходов, возвращаем пустой список
+        if (turns.empty())
+        {
+            return turns;
+        }
+
+        // если только один ход, возвращаем его
+        if (turns.size() == 1)
+        {
+            return turns;
+        }
+
+        // получение текущего состояния доски
+        vector<vector<POS_T>> current_board = board->get_board();
+        double best_score = -1;
+        vector<move_pos> best_moves;
+
+        // перебор всех возможных ходов
+        for (size_t i = 0; i < turns.size(); ++i)
+        {
+            // создание копии доски и выполнение хода
+            vector<vector<POS_T>> temp_board = make_turn(current_board, turns[i]);
+
+            // рекурсивный поиск оценки для этого хода
+            double score;
+            if (Max_depth <= 1)
+            {
+                // если глубина 1, просто оцениваем позицию
+                score = calc_score(temp_board, color);
+            }
+            else
+            {
+                // иначе запускаем рекурсивный поиск
+                score = find_best_turns_rec(temp_board, !color, Max_depth - 1, -1, INF + 1);
+            }
+
+            // обновление лучшего результата
+            if (score > best_score)
+            {
+                best_score = score;
+                best_moves.clear();
+                best_moves.push_back(turns[i]);
+            }
+            else if (abs(score - best_score) < 1e-9)
+            {
+                // добавление хода с равной оценкой
+                best_moves.push_back(turns[i]);
+            }
+        }
+
+        return best_moves;
+    }
 
 private:
     // выполнение хода на копии доски
@@ -81,11 +141,112 @@ private:
 
     // объявление функции поиска первого лучшего хода
     double find_first_best_turn(vector<vector<POS_T>> mtx, const bool color, const POS_T x, const POS_T y, size_t state,
-                                double alpha = -1);
+                                double alpha)
+    {
+        // поиск ходов для конкретной фигуры
+        find_turns(x, y, mtx);
+
+        // если нет ходов то возвращаем оценку текущей позиции
+        if (turns.empty())
+        {
+            return calc_score(mtx, color);
+        }
+
+        double best_score = (alpha == -1) ? 0 : alpha;
+
+        // перебор всех возможных ходов для данной фигуры
+        for (const auto &turn : turns)
+        {
+            // выполнение хода на копии доски
+            vector<vector<POS_T>> new_mtx = make_turn(mtx, turn);
+
+            // оценка получившейся позиции
+            double score = calc_score(new_mtx, color);
+
+            // обновление лучшей оценки
+            if (alpha == -1 || score > best_score)
+            {
+                best_score = score;
+            }
+        }
+
+        return best_score;
+    }
 
     // объявление рекурсивной функции поиска лучших ходов
-    double find_best_turns_rec(vector<vector<POS_T>> mtx, const bool color, const size_t depth, double alpha = -1,
-                               double beta = INF + 1, const POS_T x = -1, const POS_T y = -1);
+    double find_best_turns_rec(vector<vector<POS_T>> mtx, const bool color, const size_t depth, double alpha,
+                               double beta, const POS_T x, const POS_T y)
+    {
+        // базовый случай - достигнута максимальная глубина
+        if (depth == 0)
+        {
+            return calc_score(mtx, !color); // оценка с точки зрения противника
+        }
+
+        // поиск всех возможных ходов для текущего цвета
+        find_turns(color, mtx);
+
+        // если нет ходов то игра окончена
+        if (turns.empty())
+        {
+            return calc_score(mtx, !color);
+        }
+
+        // если это ход бота
+        if (color == board->get_board()[0][0] % 2) // предполагаем, что первый ход делает бот
+        {
+            double max_eval = 0;
+
+            // перебор всех возможных ходов
+            for (const auto &turn : turns)
+            {
+                // выполнение хода на копии доски
+                vector<vector<POS_T>> new_mtx = make_turn(mtx, turn);
+
+                // рекурсивный вызов для противника
+                double eval = find_best_turns_rec(new_mtx, !color, depth - 1, alpha, beta);
+
+                // обновление максимальной оценки
+                max_eval = max(max_eval, eval);
+                alpha = max(alpha, eval);
+
+                // альфабета отсечение
+                if (optimization != "None" && beta <= alpha)
+                {
+                    break;
+                }
+            }
+
+            return max_eval;
+        }
+        else
+        {
+            // ход противника
+            double min_eval = INF;
+
+            // перебор всех возможных ходов противника
+            for (const auto &turn : turns)
+            {
+                // выполнение хода на копии доски
+                vector<vector<POS_T>> new_mtx = make_turn(mtx, turn);
+
+                // рекурсивный вызов для бота
+                double eval = find_best_turns_rec(new_mtx, !color, depth - 1, alpha, beta);
+
+                // обновление минимальной оценки
+                min_eval = min(min_eval, eval);
+                beta = min(beta, eval);
+
+                // альфа-бета отсечение
+                if (optimization != "None" && beta <= alpha)
+                {
+                    break;
+                }
+            }
+
+            return min_eval;
+        }
+    }
 
 public:
     // поиск всех возможных ходов для указанного цвета
